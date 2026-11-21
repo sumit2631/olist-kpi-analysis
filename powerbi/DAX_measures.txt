@@ -1,0 +1,88 @@
+=====================================================================
+ POWER BI: DATE TABLE + DAX MEASURES
+ Copy each block into Power BI Desktop.
+ Table names assume you renamed the imported views to:
+   fact_orders, fact_order_items, seller_performance
+=====================================================================
+
+---------------------------------------------------------------------
+1) DATE TABLE   (Modeling > New table)
+---------------------------------------------------------------------
+Date =
+ADDCOLUMNS (
+    CALENDAR ( DATE ( 2017, 1, 1 ), DATE ( 2018, 8, 31 ) ),
+    "Year", YEAR ( [Date] ),
+    "Month Start", DATE ( YEAR ( [Date] ), MONTH ( [Date] ), 1 ),
+    "Month", FORMAT ( [Date], "mmm yyyy" )
+)
+
+After creating it:
+  - Select the Month column > Column tools > Sort by column > Month Start
+  - Table tools > Mark as date table > choose the Date column
+  - Model view: drag Date[Date] onto fact_orders[purchase_date]
+    (one-to-many, single direction)
+  - Model view: drag fact_orders[order_id] onto fact_order_items[order_id]
+    (one-to-many, single direction)
+  - seller_performance stays unconnected (it is a full-period scorecard)
+
+---------------------------------------------------------------------
+2) MEASURES   (select fact_orders > Table tools > New measure)
+   Create them one at a time, in this order.
+---------------------------------------------------------------------
+
+Revenue = SUM ( fact_orders[order_value] )
+
+Orders = COUNTROWS ( fact_orders )
+
+AOV = DIVIDE ( [Revenue], [Orders] )
+
+Customers = DISTINCTCOUNT ( fact_orders[customer_unique_id] )
+
+Delivered Orders = SUM ( fact_orders[is_delivered] )
+
+Late Orders = SUM ( fact_orders[is_late] )
+
+On-Time % = 1 - DIVIDE ( [Late Orders], [Delivered Orders] )
+
+Avg Delivery Days = AVERAGE ( fact_orders[delivery_days] )
+
+Avg Review = AVERAGE ( fact_orders[review_score] )
+
+Low Review % =
+DIVIDE (
+    CALCULATE ( COUNTROWS ( fact_orders ), fact_orders[review_score] <= 2 ),
+    CALCULATE ( COUNTROWS ( fact_orders ), NOT ISBLANK ( fact_orders[review_score] ) )
+)
+
+Revenue PM = CALCULATE ( [Revenue], DATEADD ( 'Date'[Date], -1, MONTH ) )
+
+Revenue MoM % = DIVIDE ( [Revenue] - [Revenue PM], [Revenue PM] )
+
+Repeat Customer % =
+VAR CustomerList = VALUES ( fact_orders[customer_unique_id] )
+VAR Repeaters =
+    COUNTROWS ( FILTER ( CustomerList, CALCULATE ( COUNTROWS ( fact_orders ) ) > 1 ) )
+RETURN
+    DIVIDE ( Repeaters, COUNTROWS ( CustomerList ) )
+
+Item Revenue = SUM ( fact_order_items[item_value] )
+
+---------------------------------------------------------------------
+3) FORMATTING
+---------------------------------------------------------------------
+  - On-Time %, Low Review %, Revenue MoM %, Repeat Customer %  > Percentage, 1 decimal
+  - Revenue, AOV, Item Revenue > Decimal number, thousands separator
+    (the currency is Brazilian Real, R$; write "R$" in titles)
+  - Avg Review, Avg Delivery Days > 2 and 1 decimals
+
+---------------------------------------------------------------------
+4) CHECK YOUR NUMBERS (full period, no filters)
+   These came from the test run. Small differences in review figures
+   are normal if Kaggle's file version differs. Trust your own run.
+---------------------------------------------------------------------
+  Orders            ~ 97,905
+  Revenue           ~ R$ 15.68 million
+  AOV               ~ R$ 160
+  On-Time %         ~ 93.2%
+  Avg Delivery Days ~ 12.5
+  Avg Review        ~ 4.10
